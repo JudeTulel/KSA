@@ -8,44 +8,32 @@ import numpy as np
 import onnxruntime
 
 def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleup=True, stride=32):
-    # Get original dimensions
-    orig_shape = im.shape[:2]  # [height, width]
-    
-    # Calculate scale ratio while preserving aspect ratio
-    scale_ratio = min(new_shape[0] / orig_shape[0], new_shape[1] / orig_shape[1])
-    
-    # Only scale down if scaleup=False
-    if not scaleup:
-        scale_ratio = min(scale_ratio, 1.0)
-    
-    # Calculate new dimensions
-    new_unpad = (
-        int(round(orig_shape[1] * scale_ratio)),  # width
-        int(round(orig_shape[0] * scale_ratio))   # height
-    )
-    
-    # Calculate padding
-    pad_w = new_shape[1] - new_unpad[0]
-    pad_h = new_shape[0] - new_unpad[1]
-    
-    if auto:
-        # Adjust padding to be divisible by stride
-        pad_w = np.mod(pad_w, stride)
-        pad_h = np.mod(pad_h, stride)
-    
-    # Split padding evenly on both sides
-    top = int(round(pad_h / 2 - 0.1))
-    bottom = int(round(pad_h / 2 + 0.1))
-    left = int(round(pad_w / 2 - 0.1))
-    right = int(round(pad_w / 2 + 0.1))
-    
-    # Resize image
-    im = cv2.resize(im, new_unpad, interpolation=cv2.INTER_LINEAR)
-    
-    # Add padding
+    # Resize and pad image while meeting stride-multiple constraints
+    shape = im.shape[:2]  # current shape [height, width]
+    if isinstance(new_shape, int):
+        new_shape = (new_shape, new_shape)
+
+    # Scale ratio (new / old)
+    r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
+    if not scaleup:  # only scale down, do not scale up (for better val mAP)
+        r = min(r, 1.0)
+
+    # Compute padding
+    new_unpad = int(round(shape[1] * r)), int(round(shape[0] * r))
+    dw, dh = new_shape[1] - new_unpad[0], new_shape[0] - new_unpad[1]  # wh padding
+
+    if auto:  # minimum rectangle
+        dw, dh = np.mod(dw, stride), np.mod(dh, stride)  # wh padding
+
+    dw /= 2  # divide padding into 2 sides
+    dh /= 2
+
+    if shape[::-1] != new_unpad:  # resize
+        im = cv2.resize(im, new_unpad, interpolation=cv2.INTER_LINEAR)
+    top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
+    left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
     im = cv2.copyMakeBorder(im, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)
-    
-    return im
+    return im, r, (dw, dh)
 
 def non_max_suppression(prediction, conf_thres=0.25, iou_thres=0.45, classes=None, max_det=300):
     nc = prediction.shape[2] - 5  # number of classes
