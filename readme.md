@@ -14,4 +14,5 @@
   - Python 3.x
   - PyTorch
   - CUDA (for GPU support)
-## 
+## Running inference
+
